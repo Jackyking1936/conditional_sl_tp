@@ -1,3 +1,5 @@
+from login_gui import LoginForm
+
 import sys
 import pickle
 import json
@@ -10,126 +12,6 @@ from PySide6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QLineE
 from PySide6.QtGui import QTextCursor, QIcon, QColor
 from PySide6.QtCore import Qt, Signal, QObject, QMutex
 from threading import Timer
-
-class LoginForm(QWidget):
-    def __init__(self):
-        super().__init__()
-        my_icon = QIcon()
-        my_icon.addFile('inventory.png')
-
-        self.setWindowIcon(my_icon)
-        self.setWindowTitle('新一代API_登入')
-        self.resize(500, 200)
-        
-        layout_all = QVBoxLayout()
-
-        label_warning = QLabel('本範例僅供教學參考，使用前請先了解相關內容')
-        layout_all.addWidget(label_warning)
-
-        layout = QGridLayout()
-
-        label_your_id = QLabel('Your ID:')
-        self.lineEdit_id = QLineEdit()
-        self.lineEdit_id.setPlaceholderText('Please enter your id')
-        layout.addWidget(label_your_id, 0, 0)
-        layout.addWidget(self.lineEdit_id, 0, 1)
-
-        label_password = QLabel('Password:')
-        self.lineEdit_password = QLineEdit()
-        self.lineEdit_password.setPlaceholderText('Please enter your password')
-        self.lineEdit_password.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addWidget(label_password, 1, 0)
-        layout.addWidget(self.lineEdit_password, 1, 1)
-
-        label_cert_path = QLabel('Cert path:')
-        self.lineEdit_cert_path = QLineEdit()
-        self.lineEdit_cert_path.setPlaceholderText('Please enter your cert path')
-        layout.addWidget(label_cert_path, 2, 0)
-        layout.addWidget(self.lineEdit_cert_path, 2, 1)
-        
-        label_cert_pwd = QLabel('Cert Password:')
-        self.lineEdit_cert_pwd = QLineEdit()
-        self.lineEdit_cert_pwd.setPlaceholderText('Please enter your cert password')
-        self.lineEdit_cert_pwd.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addWidget(label_cert_pwd, 3, 0)
-        layout.addWidget(self.lineEdit_cert_pwd, 3, 1)
-
-        label_acc = QLabel('Account:')
-        self.lineEdit_acc = QLineEdit()
-        self.lineEdit_acc.setPlaceholderText('Please enter your account')
-        self.lineEdit_cert_pwd.setEchoMode(QLineEdit.EchoMode.Password)
-        layout.addWidget(label_acc, 4, 0)
-        layout.addWidget(self.lineEdit_acc, 4, 1)
-
-        folder_btn = QPushButton('')
-        folder_btn.setIcon(QIcon('folder.png'))
-        layout.addWidget(folder_btn, 2, 2)
-
-        login_btn = QPushButton('Login')
-        layout.addWidget(login_btn, 5, 0, 1, 2)
-
-        layout_all.addLayout(layout)
-        self.setLayout(layout_all)
-        
-        folder_btn.clicked.connect(self.showDialog)
-        login_btn.clicked.connect(self.check_password)
-        
-        my_file = Path("./info.pkl")
-        if my_file.is_file():
-            with open('info.pkl', 'rb') as f:
-                user_info_dict = pickle.load(f)
-                self.lineEdit_id.setText(user_info_dict['id'])
-                self.lineEdit_password.setText(user_info_dict['pwd'])
-                self.lineEdit_cert_path.setText(user_info_dict['cert_path'])
-                self.lineEdit_cert_pwd.setText(user_info_dict['cert_pwd'])
-                self.lineEdit_acc.setText(user_info_dict['target_account'])
-
-    def showDialog(self):
-        # Open the file dialog to select a file
-        file_path, _ = QFileDialog.getOpenFileName(self, '請選擇您的憑證檔案', 'C:\\', 'All Files (*)')
-
-        if file_path:
-            self.lineEdit_cert_path.setText(file_path)
-    
-    def check_password(self):
-        global active_account, sdk
-        msg = QMessageBox()
-
-        fubon_id = self.lineEdit_id.text()
-        fubon_pwd = self.lineEdit_password.text()
-        cert_path = self.lineEdit_cert_path.text()
-        cert_pwd = self.lineEdit_cert_pwd.text()
-        target_account = self.lineEdit_acc.text()
-        
-        user_info_dict = {
-            'id':fubon_id,
-            'pwd':fubon_pwd,
-            'cert_path':cert_path,
-            'cert_pwd':cert_pwd,
-            'target_account':target_account
-        }      
-    
-        accounts = sdk.login(fubon_id, fubon_pwd, Path(cert_path).__str__(), cert_pwd)
-        if accounts.is_success:
-            for cur_account in accounts.data:
-                if cur_account.account == target_account:
-                    active_account = cur_account
-                    with open('info.pkl', 'wb') as f:
-                        pickle.dump(user_info_dict, f)
-                    
-                    self.main_app = MainApp()
-                    self.main_app.show()
-                    self.close()
-                    
-            if active_account == None:
-                sdk.logout()
-                msg.setWindowTitle("登入失敗")
-                msg.setText("找不到您輸入的帳號")
-                msg.exec()
-        else:
-            msg.setWindowTitle("登入失敗")
-            msg.setText(accounts.message)
-            msg.exec()
 
 class RepeatTimer(Timer):
     def run(self):
@@ -160,7 +42,7 @@ class Communicate(QObject):
     del_row_signal = Signal(int)
 
 class MainApp(QWidget):
-    def __init__(self):
+    def __init__(self, active_account):
         super().__init__()
 
         my_icon = QIcon()
@@ -169,6 +51,7 @@ class MainApp(QWidget):
         self.setWindowIcon(my_icon)
         self.setWindowTitle("Python庫存停損停利(教學範例，僅限現股)")
         self.resize(1200, 600)
+        self.active_account = active_account
         
         self.mutex = QMutex()
         
@@ -239,7 +122,7 @@ class MainApp(QWidget):
         layout.addWidget(self.log_text)
         self.setLayout(layout)
 
-        self.print_log("login success, 現在使用帳號: {}".format(active_account.account))
+        self.print_log("login success, 現在使用帳號: {}".format(self.active_account.account))
         self.print_log("建立行情連線...")
         sdk.init_realtime() # 建立行情連線
         self.print_log("行情連線建立OK")
@@ -368,7 +251,7 @@ class MainApp(QWidget):
             new_fake_sell.buy_sell = BSAction.Sell
             new_fake_sell.filled_qty = 1000
             new_fake_sell.filled_price = 14
-            new_fake_sell.account = active_account.account
+            new_fake_sell.account = self.active_account.account
             new_fake_sell.user_def = "inv_SL"
             self.on_filled(None, new_fake_sell)
 
@@ -381,14 +264,14 @@ class MainApp(QWidget):
             new_fake_buy.buy_sell = BSAction.Buy
             new_fake_buy.filled_qty = 2000
             new_fake_buy.filled_price = 17
-            new_fake_buy.account = active_account.account
+            new_fake_buy.account = self.active_account.account
             self.on_filled(None, new_fake_buy)
 
     # 主動回報，接入成交回報後判斷 row_idx_map 要如何更新，sl 及 tp 監控列表及庫存列表是否需pop，訂閱是否加退訂
     def on_filled(self, err, content):
         print('filled recived:', content.stock_no, content.buy_sell)
         print('content:', content)
-        if content.account == active_account.account:
+        if content.account == self.active_account.account:
             # print("filled get lock")
             self.mutex.lock()
             if content.order_type == OrderType.Stock and content.filled_qty >= 1000:
@@ -601,7 +484,7 @@ class MainApp(QWidget):
             user_def = sl_or_tp # optional field
         )
 
-        order_res = sdk.stock.place_order(active_account, order)
+        order_res = sdk.stock.place_order(self.active_account, order)
         return order_res
 
     def handle_message(self, message):
@@ -702,7 +585,7 @@ class MainApp(QWidget):
 
     # 視窗啟動時撈取對應帳號的inventories和unrealized_pnl初始化表格
     def table_init(self):
-        inv_res = sdk.accounting.inventories(active_account)
+        inv_res = sdk.accounting.inventories(self.active_account)
         if inv_res.is_success:
             self.print_log("庫存抓取成功")
             inv_data = inv_res.data
@@ -713,7 +596,7 @@ class MainApp(QWidget):
             self.print_log("庫存抓取失敗")
         
         self.print_log("抓取未實現損益...")
-        upnl_res = sdk.accounting.unrealized_gains_and_loses(active_account)
+        upnl_res = sdk.accounting.unrealized_gains_and_loses(self.active_account)
         if upnl_res.is_success:
             self.print_log("未實現損益抓取成功")
             upnl_data = upnl_res.data
@@ -892,18 +775,18 @@ class MainApp(QWidget):
         else:
             event.ignore()
 
-try:
-    sdk = FubonSDK()
-except ValueError:
-    raise ValueError("請確認網路連線")
-active_account = None
- 
-if not QApplication.instance():
-    app = QApplication(sys.argv)
-else:
-    app = QApplication.instance()
-app.setStyleSheet("QWidget{font-size: 12pt;}")
-form = LoginForm()
-form.show()
- 
-sys.exit(app.exec())
+if __name__ == "__main__":
+    try:
+        sdk = FubonSDK()
+    except ValueError:
+        raise ValueError("請確認網路連線")
+    
+    if not QApplication.instance():
+        app = QApplication(sys.argv)
+    else:
+        app = QApplication.instance()
+    app.setStyleSheet("QWidget{font-size: 12pt;}")
+    form = LoginForm(MainApp, sdk, 'inventory.png')
+    form.show()
+    
+    sys.exit(app.exec())
