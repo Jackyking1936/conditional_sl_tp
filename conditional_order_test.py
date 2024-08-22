@@ -48,7 +48,8 @@ order = ConditionOrder(
     market_type = ConditionMarketType.Common,
     price_type = ConditionPriceType.Market,
     time_in_force = TimeInForce.ROD,
-    order_type = ConditionOrderType.Stock
+    order_type = ConditionOrderType.Stock,
+    user_def = "c_sl"
 )
 
 res = sdk.stock.single_condition(active_account, "20240821","20241118", StopSign.Full , condition, order)

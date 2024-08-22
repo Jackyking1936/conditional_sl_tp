@@ -5,7 +5,7 @@ import pickle
 import json
 from pathlib import Path
 
-from fubon_neo.sdk import FubonSDK, Order, Condition, ConditionOrder
+from fubon_neo.sdk import FubonSDK, Mode, Order, Condition, ConditionOrder
 from fubon_neo.constant import ( 
     TriggerContent, TradingType, Operator, TPSLOrder, TPSLWrapper, SplitDescription,
     StopSign, TimeSliceOrderType, ConditionMarketType, ConditionPriceType, ConditionOrderType, TrailOrder, Direction, ConditionStatus, HistoryStatus
@@ -128,7 +128,7 @@ class MainApp(QWidget):
 
         self.print_log("login success, 現在使用帳號: {}".format(self.active_account.account))
         self.print_log("建立行情連線...")
-        sdk.init_realtime() # 建立行情連線
+        sdk.init_realtime(Mode.Normal) # 建立行情連線
         self.print_log("行情連線建立OK")
         self.reststock = sdk.marketdata.rest_client.stock
         self.wsstock = sdk.marketdata.websocket_client.stock
@@ -242,7 +242,7 @@ class MainApp(QWidget):
 
         self.row_idx_map[symbol] = row
         self.wsstock.subscribe({
-            'channel': 'trades',
+            'channel': 'aggregates',
             'symbol': symbol
         })
 
@@ -495,7 +495,7 @@ class MainApp(QWidget):
         msg = json.loads(message)
         event = msg["event"]
         data = msg["data"]
-        # print(event, data)
+        print(event, data)
         
         # subscribed事件處理
         if event == "subscribed":
@@ -511,7 +511,16 @@ class MainApp(QWidget):
                     remove_key = key
             self.subscribed_ids.pop(remove_key)
             self.communicator.print_log_signal.emit(remove_key+"...成功移除訂閱")
-            
+        elif event == "snapshot":
+            if 'isTrial' in data:
+                if data['isTrial']:
+                    return
+            symbol = data['symbol']
+            cur_price = data['lastTrade']['price']
+            if 'isClose' in data:
+                if data['isClose']:
+                    self.communicator.item_update_signal.emit(self.row_idx_map[symbol], self.col_idx_map['現價'], str(cur_price))
+
         # data事件處理
         elif event == "data":
             if 'isTrial' in data:
@@ -528,8 +537,8 @@ class MainApp(QWidget):
                 self.mutex.unlock()
                 return
             
-            if 'price' in data:
-                cur_price = data["price"]
+            if 'lastTrade' in data:
+                cur_price = data['lastTrade']["price"]
             else:
                 self.mutex.unlock()
                 return
@@ -665,7 +674,7 @@ class MainApp(QWidget):
                     item.setText(str(round(return_rate+self.epsilon, 2))+'%')
                     self.tablewidget.setItem(row, j, item)
             self.wsstock.subscribe({
-                'channel': 'trades',
+                'channel': 'aggregates',
                 'symbol': stock_symbol
             })
 
@@ -713,7 +722,7 @@ class MainApp(QWidget):
         self.tablewidget.setRowCount(0)
 
         self.print_log("建立WebSocket行情連線")
-        sdk.init_realtime()
+        sdk.init_realtime(Mode.Normal)
         self.wsstock = sdk.marketdata.websocket_client.stock
         self.wsstock.on("connect", self.handle_connect)
         self.wsstock.on("disconnect", self.handle_disconnect)
