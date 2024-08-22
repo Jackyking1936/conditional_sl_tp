@@ -4,6 +4,7 @@ import sys
 import pickle
 import json
 from pathlib import Path
+from datetime import datetime, timedelta
 
 from fubon_neo.sdk import FubonSDK, Mode, Order, Condition, ConditionOrder
 from fubon_neo.constant import ( 
@@ -400,6 +401,39 @@ class MainApp(QWidget):
         except Exception as e:
             print(e, row, col, value)
 
+    def condition_market_order(self, symbol, order_qty, trigger_value, sl_tp):
+        if sl_tp == 'sl':
+            c_operator = Operator.LessThanOrEqual
+        elif sl_tp == 'tp':
+            c_operator = Operator.GreaterThanOrEqual
+
+        condition = Condition(
+            market_type = TradingType.Reference, 
+            symbol = symbol,
+            trigger = TriggerContent.MatchedPrice,
+            trigger_value = trigger_value,
+            comparison = c_operator
+        )
+
+        order = ConditionOrder(
+            buy_sell= BSAction.Sell,
+            symbol = symbol,
+            quantity = order_qty,
+            price = None,
+            market_type = ConditionMarketType.Common,
+            price_type = ConditionPriceType.Market,
+            time_in_force = TimeInForce.ROD,
+            order_type = ConditionOrderType.Stock,
+        )
+
+        now_datetime = datetime.now()
+        now_time_str = datetime.strftime(now_datetime, '%H%M%S')
+        if now_time_str >= '133000':
+            order_date = datetime.strftime(now_datetime, '%Y%m%d')
+            end_datetime = now_datetime + timedelta(days=89)
+            end_date = datetime.strftime(end_datetime, '%Y%m%d')
+        res = sdk.stock.single_condition(self.active_account, "20240821","20241118", StopSign.Full , condition, order)
+
     def onItemClicked(self, item):
         if item.checkState() == Qt.Checked:
             if item.column() == self.col_idx_map['停損']:
@@ -424,6 +458,7 @@ class MainApp(QWidget):
                     item.setCheckState(Qt.Unchecked)
                 else:
                     self.stop_loss_dict[symbol] = item_price
+
                     item.setFlags(item.flags() & ~Qt.ItemIsEditable)
                     self.print_log(symbol+"...停損設定成功: "+item_str)
                     
