@@ -325,6 +325,9 @@ class MainApp(QWidget):
                         self.communicator.item_update_signal.emit(self.row_idx_map[content.stock_no], self.col_idx_map['損益試算'], str(round(new_pnl+self.epsilon, 2)))
                         self.communicator.item_update_signal.emit(self.row_idx_map[content.stock_no], self.col_idx_map['獲利率%'], str(round(new_rate_return+self.epsilon, 2))+"%")
 
+                        if content.stock_no in self.sl_condition_map:
+                            sdk.
+
                     else:
                         self.communicator.add_new_inv_signal.emit(content.stock_no, content.filled_qty, content.filled_price)
                         self.inventories[(content.stock_no, str(content.order_type))] = content
