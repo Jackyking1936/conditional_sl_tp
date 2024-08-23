@@ -166,6 +166,8 @@ class MainApp(QWidget):
         
         self.stop_loss_dict = {}
         self.take_profit_dict = {}
+        self.sl_condition_map = {}
+        self.tp_condition_map = {}
 
         # 模擬用變數
         self.fake_price_cnt = 0
@@ -212,9 +214,19 @@ class MainApp(QWidget):
                 if self.default_sl_percent < 0:
                     item.setCheckState(Qt.Checked)
                     new_sl_price = round(price*(1+self.default_sl_percent)+self.epsilon, 2)
-                    item.setText(str(new_sl_price))
-                    self.stop_loss_dict[symbol] = new_sl_price
-                    self.tablewidget.setItem(row, j, item)
+                    condition_res = self.condition_market_order(symbol, qty, new_sl_price, "sl")
+                    print(condition_res)
+                    if condition_res.is_success:
+                        item.setText(str(new_sl_price))
+                        self.stop_loss_dict[symbol] = new_sl_price
+                        self.sl_condition_map[symbol] = condition_res.data.guid
+                        self.tablewidget.setItem(row, j, item)
+                        self.print_log(symbol+"...停損設定成功: "+str(new_sl_price)+", 條件單號: "+condition_res.data.guid)
+                    else:
+                        self.print_log(symbol+"...停損設定失敗..."+condition_res.message)
+                        item.setCheckState(Qt.Unchecked)
+                        self.tablewidget.setItem(row, j, item)
+
                 else:
                     item.setCheckState(Qt.Unchecked)
                     self.tablewidget.setItem(row, j, item)
@@ -225,9 +237,18 @@ class MainApp(QWidget):
                 if self.default_tp_percent > 0:
                     item.setCheckState(Qt.Checked)
                     new_tp_price = round(price*(1+self.default_tp_percent)+self.epsilon, 2)
-                    item.setText(str(new_tp_price))
-                    self.take_profit_dict[symbol] = new_tp_price
-                    self.tablewidget.setItem(row, j, item)
+                    condition_res = self.condition_market_order(symbol, qty, new_tp_price, "tp")
+                    print(condition_res)
+                    if condition_res.is_success:
+                        item.setText(str(new_tp_price))
+                        self.take_profit_dict[symbol] = new_tp_price
+                        self.tp_condition_map[symbol] = condition_res.data.guid
+                        self.tablewidget.setItem(row, j, item)
+                        self.print_log(symbol+"...停利設定成功: "+str(new_tp_price)+", 條件單號: "+condition_res.data.guid)
+                    else:
+                        self.print_log(symbol+"...停利設定失敗..."+condition_res.message)
+                        item.setCheckState(Qt.Unchecked)
+                        self.tablewidget.setItem(row, j, item)
                 else:
                     item.setCheckState(Qt.Unchecked)
                     self.tablewidget.setItem(row, j, item)
@@ -250,7 +271,7 @@ class MainApp(QWidget):
     # 測試用假裝有賣出成交的按鈕slot function
     def fake_sell_filled(self):
         new_fake_sell = fake_filled_data()
-        stock_list = ['2330', '2881', '2454', '00940', '1101', '6598', '2509', '3230', '4903', '6661']
+        stock_list = ['2330', '2881', '2454'] #, '00940', '1101', '6598', '2509', '3230', '4903', '6661']
         for stock_no in stock_list:
             new_fake_sell.stock_no = stock_no
             new_fake_sell.buy_sell = BSAction.Sell
@@ -262,7 +283,7 @@ class MainApp(QWidget):
 
     # 測試用假裝有買入成交的按鈕slot function
     def fake_buy_filled(self):
-        stock_list = ['2330', '2881', '2454', '00940', '1101', '6598', '2509', '3230', '4903', '6661']
+        stock_list = ['2330', '2881', '2454'] #, '00940', '1101', '6598', '2509', '3230', '4903', '6661']
         for stock_no in stock_list:
             new_fake_buy = fake_filled_data()
             new_fake_buy.stock_no = stock_no
@@ -309,7 +330,7 @@ class MainApp(QWidget):
                         self.inventories[(content.stock_no, str(content.order_type))] = content
                         print("adding...", content.stock_no)
                         while content.stock_no not in self.row_idx_map:
-                            print("adding...", content.stock_no)
+                            # print("adding...", content.stock_no)
                             pass
                         print("add done")
                         
@@ -411,14 +432,14 @@ class MainApp(QWidget):
             market_type = TradingType.Reference, 
             symbol = symbol,
             trigger = TriggerContent.MatchedPrice,
-            trigger_value = trigger_value,
+            trigger_value = str(trigger_value),
             comparison = c_operator
         )
 
         order = ConditionOrder(
             buy_sell= BSAction.Sell,
             symbol = symbol,
-            quantity = order_qty,
+            quantity = int(order_qty),
             price = None,
             market_type = ConditionMarketType.Common,
             price_type = ConditionPriceType.Market,
@@ -428,17 +449,30 @@ class MainApp(QWidget):
 
         now_datetime = datetime.now()
         now_time_str = datetime.strftime(now_datetime, '%H%M%S')
+
         if now_time_str >= '133000':
-            order_date = datetime.strftime(now_datetime, '%Y%m%d')
+            start_date = datetime.strftime(now_datetime+timedelta(days=1), '%Y%m%d')
             end_datetime = now_datetime + timedelta(days=89)
             end_date = datetime.strftime(end_datetime, '%Y%m%d')
-        res = sdk.stock.single_condition(self.active_account, "20240821","20241118", StopSign.Full , condition, order)
+        else:
+            start_date = datetime.strftime(now_datetime, '%Y%m%d')
+            end_datetime = now_datetime + timedelta(days=89)
+            end_date = datetime.strftime(end_datetime, '%Y%m%d')
+
+        res = sdk.stock.single_condition(self.active_account, start_date, end_date, StopSign.Full , condition, order)
+        return res
 
     def onItemClicked(self, item):
         if item.checkState() == Qt.Checked:
+            symbol = self.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
+            item_str = item.text() #停損或停利的輸入
+
+            cur_price = self.tablewidget.item(item.row(), self.col_idx_map['現價']).text()
+            cur_price = float(cur_price)
+
+            order_qty = self.tablewidget.item(item.row(), self.col_idx_map['庫存股數']).text()
+
             if item.column() == self.col_idx_map['停損']:
-                symbol = self.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
-                item_str = item.text()
                 if symbol in self.stop_loss_dict:
                     return
                 
@@ -451,22 +485,24 @@ class MainApp(QWidget):
                     print("stop loss:", self.stop_loss_dict)
                     return
                 
-                cur_price = self.tablewidget.item(item.row(), self.col_idx_map['現價']).text()
-                cur_price = float(cur_price)
                 if cur_price <= item_price or 0 >= item_price:
                     self.print_log("請輸入正確價格，停損價格必須小於現價並大於0")
                     item.setCheckState(Qt.Unchecked)
                 else:
-                    self.stop_loss_dict[symbol] = item_price
-
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    self.print_log(symbol+"...停損設定成功: "+item_str)
+                    self.print_log("停損條件單設定中...")
+                    condition_res = self.condition_market_order(symbol, order_qty, item_price, 'sl')
+                    if condition_res.is_success:
+                        self.stop_loss_dict[symbol] = item_price
+                        self.sl_condition_map[symbol] = condition_res.data.guid
+                        item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                        self.print_log(symbol+"...停損設定成功: "+item_str+", 條件單號: "+condition_res.data.guid)
+                    else:
+                        self.print_log(symbol+"...停損設定失敗: "+condition_res.message)
+                        item.setCheckState(Qt.Unchecked)
                     
                 print("stop loss:", self.stop_loss_dict)
 
             elif item.column() == self.col_idx_map['停利']:
-                symbol = self.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
-                item_str = item.text()
 
                 if symbol in self.take_profit_dict:
                     return
@@ -480,15 +516,19 @@ class MainApp(QWidget):
                     print("take profit:", self.take_profit_dict)
                     return
                 
-                cur_price = self.tablewidget.item(item.row(), self.col_idx_map['現價']).text()
-                cur_price = float(cur_price)
                 if cur_price >= item_price:
                     self.print_log("請輸入正確價格，停利價格必須大於現價")
                     item.setCheckState(Qt.Unchecked)
                 else:
-                    self.take_profit_dict[symbol] = item_price
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                    self.print_log(symbol+"...停利設定成功: "+item_str)
+                    condition_res = self.condition_market_order(symbol, order_qty, item_price, 'tp')
+                    if condition_res.is_success:
+                        self.tp_condition_map[symbol] = condition_res.data.guid
+                        self.take_profit_dict[symbol] = item_price
+                        item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                        self.print_log(symbol+"...停利設定成功: "+item_str+", 條件單號: "+condition_res.data.guid)
+                    else:
+                        self.print_log(symbol+"...停利設定失敗: "+condition_res.message)
+                        item.setCheckState(Qt.Unchecked)
                     
                 print("take profit:", self.take_profit_dict)
 
@@ -496,6 +536,8 @@ class MainApp(QWidget):
             if item.column() == self.col_idx_map['停損']:
                 item.setFlags(item.flags() | Qt.ItemIsEditable)
                 symbol = self.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
+                if symbol in self.sl_condition_map:
+                    sdk.stock.cancel_condition_orders(self.active_account, self.sl_condition_map[symbol])
                 if symbol in self.stop_loss_dict:
                     self.stop_loss_dict.pop(symbol)
                     self.print_log(symbol+"...移除停損，請重新設置")
@@ -504,27 +546,12 @@ class MainApp(QWidget):
             elif item.column() == self.col_idx_map['停利']:
                 item.setFlags(item.flags() | Qt.ItemIsEditable)
                 symbol = self.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
+                if symbol in self.tp_condition_map:
+                    sdk.stock.cancel_condition_orders(self.active_account, self.tp_condition_map[symbol])
                 if symbol in self.take_profit_dict:
                     self.take_profit_dict.pop(symbol)
                     self.print_log(symbol+"...移除停利，請重新設置")
                     print("take profit:", self.take_profit_dict)
-
-    # 停損停利用的市價單函式
-    def sell_market_order(self, stock_symbol, sell_qty, sl_or_tp):
-        order = Order(
-            buy_sell = BSAction.Sell,
-            symbol = stock_symbol,
-            price =  None,
-            quantity =  int(sell_qty),
-            market_type = MarketType.Common,
-            price_type = PriceType.Market,
-            time_in_force = TimeInForce.ROD,
-            order_type = OrderType.Stock,
-            user_def = sl_or_tp # optional field
-        )
-
-        order_res = sdk.stock.place_order(self.active_account, order)
-        return order_res
 
     def handle_message(self, message):
         msg = json.loads(message)
@@ -591,31 +618,6 @@ class MainApp(QWidget):
         
             return_rate = cur_pnl/(float(avg_price)*float(share))*100
             self.communicator.item_update_signal.emit(self.row_idx_map[symbol], self.col_idx_map['獲利率%'], str(round(return_rate+self.epsilon, 2))+'%')
-            
-            if symbol in self.stop_loss_dict:
-                if cur_price <= self.stop_loss_dict[symbol] and symbol not in self.is_ordered:
-                    self.communicator.print_log_signal.emit(symbol+"...停損市價單發送...")
-                    sl_res = self.sell_market_order(symbol, share, "inv_SL")
-                    if sl_res.is_success:
-                        self.communicator.print_log_signal.emit(symbol+"...停損市價單發送成功，單號: "+sl_res.data.order_no)
-                        self.is_ordered.append(symbol)
-                    else:
-                        self.communicator.print_log_signal.emit(symbol+"...停損市價單發送失敗...")
-                        self.communicator.print_log_signal.emit(sl_res.message)
-                elif symbol in self.is_ordered:
-                    self.communicator.print_log_signal.emit(symbol+"...停損市價單已發送過...")
-            if symbol in self.take_profit_dict:
-                if cur_price >= self.take_profit_dict[symbol] and symbol not in self.is_ordered:
-                    self.communicator.print_log_signal.emit(symbol+"...停利市價單發送...")
-                    tp_res = self.sell_market_order(symbol, share, "inv_TP")
-                    if tp_res.is_success:
-                        self.communicator.print_log_signal.emit(symbol+"...停利市價單發送成功，單號: "+tp_res.data.order_no)
-                        self.is_ordered.append(symbol)
-                    else:
-                        self.communicator.print_log_signal.emit(symbol+"...停利市價單發送失敗...")
-                        self.communicator.print_log_signal.emit(tp_res.message)
-                elif symbol in self.is_ordered:
-                    self.communicator.print_log_signal.emit(symbol+"...停利市價單已發送過...")
             
             # print('handle_message release lock', symbol)
             self.mutex.unlock()
