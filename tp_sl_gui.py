@@ -525,7 +525,7 @@ class MainApp(QWidget):
                     self.print_log("請輸入正確價格，停損價格必須小於現價並大於0")
                     item.setCheckState(Qt.Unchecked)
                 else:
-                    self.print_log("停損條件單設定中...")
+                    # self.print_log("停損條件單設定中...")
                     condition_res = self.condition_market_order(symbol, order_qty, item_price, 'sl')
                     if condition_res.is_success:
                         self.stop_loss_dict[symbol] = item_price
@@ -695,6 +695,11 @@ class MainApp(QWidget):
         else:
             self.print_log("未實現損益抓取失敗")
 
+        get_res = sdk.stock.get_condition_order(self.active_account)
+        condition_status_map = {}
+        for res in get_res.data:
+            condition_status_map[res.guid] = res.status
+
         # 依庫存及未實現損益資訊開始填表
         for key, value in self.inventories.items():
             stock_symbol = key[0]
@@ -724,19 +729,35 @@ class MainApp(QWidget):
                 elif self.table_header[j] == '停損':
                     item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                     item.setCheckState(Qt.Unchecked)
-                    if stock_symbol in self.stop_loss_dict:
-                        item.setText(str(self.stop_loss_dict[stock_symbol]))
+
                     if stock_symbol in self.sl_condition_map:
-                        item.setCheckState(Qt.Checked)
+                        cur_guid = self.sl_condition_map[stock_symbol]
+                        if cur_guid in condition_status_map:
+                            if condition_status_map[cur_guid] != '條件單刪除(C)':
+                                item.setCheckState(Qt.Checked)
+                                if stock_symbol in self.stop_loss_dict:
+                                    item.setText(str(self.stop_loss_dict[stock_symbol]))
+                            else:
+                                self.sl_condition_map.pop(stock_symbol)
+                                self.stop_loss_dict.pop(stock_symbol)
+                    
                     self.tablewidget.setItem(row, j, item)
 
                 elif self.table_header[j] == '停利':
                     item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                     item.setCheckState(Qt.Unchecked)
-                    if stock_symbol in self.take_profit_dict:
-                        item.setText(str(self.take_profit_dict[stock_symbol]))
+
                     if stock_symbol in self.tp_condition_map:
-                        item.setCheckState(Qt.Checked)
+                        cur_guid = self.tp_condition_map[stock_symbol]
+                        if cur_guid in condition_status_map:
+                            if condition_status_map[cur_guid] != '條件單刪除(C)':
+                                item.setCheckState(Qt.Checked)
+                                if stock_symbol in self.take_profit_dict:
+                                    item.setText(str(self.take_profit_dict[stock_symbol]))
+                            else:
+                                self.tp_condition_map.pop(stock_symbol)
+                                self.take_profit_dict.pop(stock_symbol)
+
                     self.tablewidget.setItem(row, j, item)
 
                 elif self.table_header[j] == '庫存均價':
@@ -760,7 +781,7 @@ class MainApp(QWidget):
                     return_rate = cur_upnl/stock_cost*100
                     item.setText(str(round(return_rate+self.epsilon, 2))+'%')
                     self.tablewidget.setItem(row, j, item)
-                    
+
             self.wsstock.subscribe({
                 'channel': 'aggregates',
                 'symbol': stock_symbol
