@@ -42,7 +42,7 @@ class fake_filled_data():
 class Communicate(QObject):
     # 定義一個帶參數的信號
     print_log_signal = Signal(str)
-    item_update_signal = Signal(int, int, str)
+    item_update_signal = Signal(str, str, str)
     add_new_inv_signal = Signal(str, int, float)
     del_row_signal = Signal(int)
 
@@ -162,7 +162,6 @@ class MainApp(QWidget):
         self.tickers_name = {}
         self.tickers_name_init()
         self.subscribed_ids = {}
-        self.is_ordered = []
         
         self.stop_loss_dict = {}
         self.take_profit_dict = {}
@@ -319,14 +318,40 @@ class MainApp(QWidget):
                         new_rate_return = new_pnl/new_cost*100
 
                         # update row
-                        self.communicator.item_update_signal.emit(self.row_idx_map[content.stock_no], self.col_idx_map['庫存股數'], str(new_inv_qty))
-                        self.communicator.item_update_signal.emit(self.row_idx_map[content.stock_no], self.col_idx_map['庫存均價'], str(round(new_avg_price+self.epsilon, 2)))
-                        self.communicator.item_update_signal.emit(self.row_idx_map[content.stock_no], self.col_idx_map['現價'], str(round(content.filled_price+self.epsilon, 2)))
-                        self.communicator.item_update_signal.emit(self.row_idx_map[content.stock_no], self.col_idx_map['損益試算'], str(round(new_pnl+self.epsilon, 2)))
-                        self.communicator.item_update_signal.emit(self.row_idx_map[content.stock_no], self.col_idx_map['獲利率%'], str(round(new_rate_return+self.epsilon, 2))+"%")
+                        self.communicator.item_update_signal.emit(content.stock_no, '庫存股數', str(new_inv_qty))
+                        self.communicator.item_update_signal.emit(content.stock_no, '庫存均價', str(round(new_avg_price+self.epsilon, 2)))
+                        self.communicator.item_update_signal.emit(content.stock_no, '現價', str(round(content.filled_price+self.epsilon, 2)))
+                        self.communicator.item_update_signal.emit(content.stock_no, '損益試算', str(round(new_pnl+self.epsilon, 2)))
+                        self.communicator.item_update_signal.emit(content.stock_no, '獲利率%', str(round(new_rate_return+self.epsilon, 2))+"%")
 
                         if content.stock_no in self.sl_condition_map:
-                            sdk.
+                            cancel_res = sdk.stock.cancel_condition_orders(self.active_account, self.sl_condition_map[content.stock_no])
+                            if cancel_res.is_success:
+                                self.print_log("刪單成功: "+self.sl_condition_map[content.stock_no])
+                            sl_price = self.tablewidget.item(self.row_idx_map[content.stock_no], self.col_idx_map['停損']).text()
+                            condition_sl_res = self.condition_market_order(content.stock_no, new_inv_qty, sl_price, "sl")
+                            if condition_sl_res.is_success:
+                                self.sl_condition_map[content.stock_no] = condition_sl_res.data.guid
+                                self.print_log(content.stock_no+"...停損設定成功, 停損價: "+str(sl_price)+", 股數:"+str(new_inv_qty)+", 條件單號: "+condition_sl_res.data.guid)
+                            else:
+                                self.print_log(content.stock_no+"...停利設定失敗: "+condition_sl_res.message)
+                                item = self.tablewidget.item(self.row_idx_map[content.stock_no], self.col_idx_map['停損'])
+                                item.setCheckState(Qt.Unchecked)
+                        
+                        if content.stock_no in self.tp_condition_map:
+                            cancel_res = sdk.stock.cancel_condition_orders(self.active_account, self.tp_condition_map[content.stock_no])
+                            if cancel_res.is_success:
+                                self.print_log("刪單成功: "+self.tp_condition_map[content.stock_no])
+                            tp_price = self.tablewidget.item(self.row_idx_map[content.stock_no], self.col_idx_map['停利']).text()
+                            condition_tp_res = self.condition_market_order(content.stock_no, new_inv_qty, tp_price, "tp")
+                            if condition_tp_res.is_success:
+                                self.tp_condition_map[content.stock_no] = condition_tp_res.data.guid
+                                self.take_profit_dict[content.stock_no] = tp_price
+                                self.print_log(content.stock_no+"...停利設定成功, 停利價: "+str(tp_price)+", 股數: "+str(new_inv_qty)+", 條件單號: "+condition_tp_res.data.guid)
+                            else:
+                                self.print_log(content.stock_no+"...停利設定失敗: "+condition_tp_res.message)
+                                item = self.tablewidget.item(self.row_idx_map[content.stock_no], self.col_idx_map['停利'])
+                                item.setCheckState(Qt.Unchecked)
 
                     else:
                         self.communicator.add_new_inv_signal.emit(content.stock_no, content.filled_qty, content.filled_price)
@@ -351,7 +376,7 @@ class MainApp(QWidget):
                             elif content.user_def == "inv_TP":
                                 self.communicator.print_log_signal.emit("停利出場 "+content.stock_no+": "+str(content.filled_qty)+"股, 成交價:"+str(content.filled_price)+", 剩餘: "+remain_qty_str+"股")
                             
-                            self.communicator.item_update_signal.emit(inv_item.row(), self.col_idx_map['庫存股數'], remain_qty_str)
+                            self.communicator.item_update_signal.emit(content.stock_no, '庫存股數', remain_qty_str)
                             avg_item = self.tablewidget.item(self.row_idx_map[content.stock_no], self.col_idx_map['庫存均價'])
                             avg_price = float(avg_item.text())
                             new_pnl = (content.filled_price-avg_price)*remain_qty
@@ -359,10 +384,10 @@ class MainApp(QWidget):
                             new_rate_return = new_pnl/new_cost*100
 
                             # update row
-                            self.communicator.item_update_signal.emit(self.row_idx_map[content.stock_no], self.col_idx_map['庫存股數'], str(remain_qty))
-                            self.communicator.item_update_signal.emit(self.row_idx_map[content.stock_no], self.col_idx_map['現價'], str(round(content.filled_price+self.epsilon, 2)))
-                            self.communicator.item_update_signal.emit(self.row_idx_map[content.stock_no], self.col_idx_map['損益試算'], str(round(new_pnl+self.epsilon, 2)))
-                            self.communicator.item_update_signal.emit(self.row_idx_map[content.stock_no], self.col_idx_map['獲利率%'], str(round(new_rate_return+self.epsilon, 2))+"%")
+                            self.communicator.item_update_signal.emit(content.stock_no, '庫存股數', str(remain_qty))
+                            self.communicator.item_update_signal.emit(content.stock_no, '現價', str(round(content.filled_price+self.epsilon, 2)))
+                            self.communicator.item_update_signal.emit(content.stock_no, '損益試算', str(round(new_pnl+self.epsilon, 2)))
+                            self.communicator.item_update_signal.emit(content.stock_no, '獲利率%', str(round(new_rate_return+self.epsilon, 2))+"%")
 
                         elif remain_qty == 0:
                             # del table row and unsubscribe
@@ -377,6 +402,14 @@ class MainApp(QWidget):
                                     'id':self.subscribed_ids[content.stock_no]
                                 })
                             
+                            # condition order delete process
+                            if content.stock_no in self.sl_condition_map:
+                                sdk.stock.cancel_condition_orders(self.active_account, self.sl_condition_map[content.stock_no])
+                                self.sl_condition_map.pop(content.stock_no)
+                            if content.stock_no in self.tp_condition_map:
+                                sdk.stock.cancel_condition_orders(self.active_account, self.tp_condition_map[content.stock_no])
+                                self.tp_condition_map.pop(content.stock_no)
+                            
                             if content.user_def == "inv_SL":
                                 self.communicator.print_log_signal.emit("停損出場 "+content.stock_no+": "+str(content.filled_qty)+"股, 成交價:"+str(content.filled_price))
                             elif content.user_def == "inv_TP":
@@ -384,6 +417,7 @@ class MainApp(QWidget):
                             else:
                                 self.communicator.print_log_signal.emit("手動出場 "+content.stock_no+": "+str(content.filled_qty)+"股, 成交價:"+str(content.filled_price))
 
+                            # delete table map
                             print("deleting...")
                             while content.stock_no in self.row_idx_map:
                                 print("deleting...", content.stock_no)
@@ -392,10 +426,6 @@ class MainApp(QWidget):
                         
                             self.inventories.pop((content.stock_no, str(content.order_type)))
                             
-                            try:
-                                self.is_ordered.remove(content.stock_no)
-                            except ValueError as v_err:
-                                print("not in is_ordered", v_err)
             # print("filled unlock", content.stock_no)
             self.mutex.unlock()
 
@@ -419,11 +449,11 @@ class MainApp(QWidget):
         self.handle_message(json_str)
 
     # 更新表格內某一格值的slot function
-    def item_update(self, row, col, value):
+    def item_update(self, symbol, col_name, value):
         try:
-            self.tablewidget.item(row, col).setText(value)
+            self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map[col_name]).setText(value)
         except Exception as e:
-            print(e, row, col, value)
+            print(e, symbol, col_name, value)
 
     def condition_market_order(self, symbol, order_qty, trigger_value, sl_tp):
         if sl_tp == 'sl':
@@ -584,7 +614,7 @@ class MainApp(QWidget):
             cur_price = data['lastTrade']['price']
             if 'isClose' in data:
                 if data['isClose']:
-                    self.communicator.item_update_signal.emit(self.row_idx_map[symbol], self.col_idx_map['現價'], str(cur_price))
+                    self.communicator.item_update_signal.emit(symbol, '現價', str(cur_price))
 
         # data事件處理
         elif event == "data":
@@ -608,7 +638,7 @@ class MainApp(QWidget):
                 self.mutex.unlock()
                 return
                      
-            self.communicator.item_update_signal.emit(self.row_idx_map[symbol], self.col_idx_map['現價'], str(cur_price))
+            self.communicator.item_update_signal.emit(symbol, '現價', str(cur_price))
         
             avg_price_item = self.tablewidget.item(self.row_idx_map[symbol], self.col_idx_map['庫存均價'])
             avg_price = avg_price_item.text()
@@ -617,10 +647,10 @@ class MainApp(QWidget):
             share = share_item.text()
         
             cur_pnl = (cur_price-float(avg_price))*float(share)
-            self.communicator.item_update_signal.emit(self.row_idx_map[symbol], self.col_idx_map['損益試算'], str(int(round(cur_pnl, 0))))
+            self.communicator.item_update_signal.emit(symbol, '損益試算', str(int(round(cur_pnl, 0))))
         
             return_rate = cur_pnl/(float(avg_price)*float(share))*100
-            self.communicator.item_update_signal.emit(self.row_idx_map[symbol], self.col_idx_map['獲利率%'], str(round(return_rate+self.epsilon, 2))+'%')
+            self.communicator.item_update_signal.emit(symbol, '獲利率%', str(round(return_rate+self.epsilon, 2))+'%')
             
             # print('handle_message release lock', symbol)
             self.mutex.unlock()

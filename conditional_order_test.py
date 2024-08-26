@@ -55,6 +55,7 @@ order = ConditionOrder(
 res = sdk.stock.single_condition(active_account, "20240821","20241118", StopSign.Full , condition, order)
 # %%
 get_res = sdk.stock.get_condition_order(active_account)
+
 #%%
 sdk.stock.cancel_condition_orders(active_account, "f28ff37c-76b0-441f-8aaf-2a8bf19f904e")
 #%%
