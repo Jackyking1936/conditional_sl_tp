@@ -101,6 +101,11 @@ class LoginForm(QWidget):
         cert_path = self.lineEdit_cert_path.text()
         cert_pwd = self.lineEdit_cert_pwd.text()
         target_account = self.lineEdit_acc.text()
+        fixed_target_account = ''
+        if target_account[0] == '0':
+            fixed_target_account = target_account[1:]
+        else:
+            fixed_target_account = target_account
         
         user_info_dict = {
             'id':fubon_id,
@@ -113,7 +118,7 @@ class LoginForm(QWidget):
         accounts = self.sdk.login(fubon_id, fubon_pwd, Path(cert_path).__str__(), cert_pwd)
         if accounts.is_success:
             for cur_account in accounts.data:
-                if cur_account.account == target_account:
+                if cur_account.account == fixed_target_account:
                     self.active_account = cur_account
                     with open('info.pkl', 'wb') as f:
                         pickle.dump(user_info_dict, f)
