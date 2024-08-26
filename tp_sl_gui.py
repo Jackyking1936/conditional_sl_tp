@@ -1,4 +1,5 @@
 from login_gui import LoginForm
+from auto_save_dict import AutoSaveDict
 
 import sys
 import pickle
@@ -163,10 +164,10 @@ class MainApp(QWidget):
         self.tickers_name_init()
         self.subscribed_ids = {}
         
-        self.stop_loss_dict = {}
-        self.take_profit_dict = {}
-        self.sl_condition_map = {}
-        self.tp_condition_map = {}
+        self.stop_loss_dict = AutoSaveDict('stop_loss_dict.json')
+        self.take_profit_dict = AutoSaveDict('take_profit_dict.json')
+        self.sl_condition_map = AutoSaveDict('sl_condition_map.json')
+        self.tp_condition_map = AutoSaveDict('tp_condition_map.json')
 
         # 模擬用變數
         self.fake_price_cnt = 0
@@ -404,11 +405,13 @@ class MainApp(QWidget):
                             
                             # condition order delete process
                             if content.stock_no in self.sl_condition_map:
-                                sdk.stock.cancel_condition_orders(self.active_account, self.sl_condition_map[content.stock_no])
-                                self.sl_condition_map.pop(content.stock_no)
+                                cancel_res = sdk.stock.cancel_condition_orders(self.active_account, self.sl_condition_map[content.stock_no])
+                                if cancel_res.is_success:
+                                    self.sl_condition_map.pop(content.stock_no)
                             if content.stock_no in self.tp_condition_map:
-                                sdk.stock.cancel_condition_orders(self.active_account, self.tp_condition_map[content.stock_no])
-                                self.tp_condition_map.pop(content.stock_no)
+                                cancel_res = sdk.stock.cancel_condition_orders(self.active_account, self.tp_condition_map[content.stock_no])
+                                if cancel_res.is_success:
+                                    self.tp_condition_map.pop(content.stock_no)
                             
                             if content.user_def == "inv_SL":
                                 self.communicator.print_log_signal.emit("停損出場 "+content.stock_no+": "+str(content.filled_qty)+"股, 成交價:"+str(content.filled_price))
@@ -570,7 +573,9 @@ class MainApp(QWidget):
                 item.setFlags(item.flags() | Qt.ItemIsEditable)
                 symbol = self.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
                 if symbol in self.sl_condition_map:
-                    sdk.stock.cancel_condition_orders(self.active_account, self.sl_condition_map[symbol])
+                    cancel_res = sdk.stock.cancel_condition_orders(self.active_account, self.sl_condition_map[symbol])
+                    if cancel_res.is_success:
+                        self.sl_condition_map.pop(symbol)
                 if symbol in self.stop_loss_dict:
                     self.stop_loss_dict.pop(symbol)
                     self.print_log(symbol+"...移除停損，請重新設置")
@@ -580,7 +585,9 @@ class MainApp(QWidget):
                 item.setFlags(item.flags() | Qt.ItemIsEditable)
                 symbol = self.tablewidget.item(item.row(), self.col_idx_map['股票代號']).text()
                 if symbol in self.tp_condition_map:
-                    sdk.stock.cancel_condition_orders(self.active_account, self.tp_condition_map[symbol])
+                    cancel_res = sdk.stock.cancel_condition_orders(self.active_account, self.tp_condition_map[symbol])
+                    if cancel_res.is_success:
+                        self.tp_condition_map.pop(symbol)
                 if symbol in self.take_profit_dict:
                     self.take_profit_dict.pop(symbol)
                     self.print_log(symbol+"...移除停利，請重新設置")
@@ -717,11 +724,21 @@ class MainApp(QWidget):
                 elif self.table_header[j] == '停損':
                     item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                     item.setCheckState(Qt.Unchecked)
+                    if stock_symbol in self.stop_loss_dict:
+                        item.setText(str(self.stop_loss_dict[stock_symbol]))
+                    if stock_symbol in self.sl_condition_map:
+                        item.setCheckState(Qt.Checked)
                     self.tablewidget.setItem(row, j, item)
+
                 elif self.table_header[j] == '停利':
                     item.setFlags(Qt.ItemIsSelectable | Qt.ItemIsEditable | Qt.ItemIsEnabled | Qt.ItemIsUserCheckable)
                     item.setCheckState(Qt.Unchecked)
+                    if stock_symbol in self.take_profit_dict:
+                        item.setText(str(self.take_profit_dict[stock_symbol]))
+                    if stock_symbol in self.tp_condition_map:
+                        item.setCheckState(Qt.Checked)
                     self.tablewidget.setItem(row, j, item)
+
                 elif self.table_header[j] == '庫存均價':
                     item.setText(str(round(self.unrealized_pnl[key].cost_price+self.epsilon, 2)))
                     self.tablewidget.setItem(row, j, item)
@@ -743,6 +760,7 @@ class MainApp(QWidget):
                     return_rate = cur_upnl/stock_cost*100
                     item.setText(str(round(return_rate+self.epsilon, 2))+'%')
                     self.tablewidget.setItem(row, j, item)
+                    
             self.wsstock.subscribe({
                 'channel': 'aggregates',
                 'symbol': stock_symbol
