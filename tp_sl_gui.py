@@ -858,6 +858,7 @@ class MainApp(QWidget):
                 self.fake_price_cnt+=1
         except AttributeError:
             print("no fake ws timer exist")
+        self.inventories = {}
 
     def tickers_name_init(self):
         self.tickers_res = self.reststock.snapshot.quotes(market='TSE')
