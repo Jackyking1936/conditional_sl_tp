@@ -697,8 +697,9 @@ class MainApp(QWidget):
 
         get_res = sdk.stock.get_condition_order(self.active_account)
         condition_status_map = {}
-        for res in get_res.data:
-            condition_status_map[res.guid] = res.status
+        if get_res.is_success:
+            for res in get_res.data:
+                condition_status_map[res.guid] = res.status
 
         # 依庫存及未實現損益資訊開始填表
         for key, value in self.inventories.items():
