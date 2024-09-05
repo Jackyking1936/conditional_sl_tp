@@ -20,18 +20,13 @@ for account in accounts.data:
 
 print(active_account)
 # %%
-sdk.init_realtime()
-restfut = sdk.marketdata.rest_client.futopt  
-restfut.intraday.tickers(type='OPTION', exchange='TAIFEX',session='REGULAR', contractType='I')
-# %%
-
-from fubon_neo.sdk import  FubonSDK, Condition, ConditionOrder
+from fubon_neo.sdk import  FubonSDK, Order, Condition, ConditionOrder
 from fubon_neo.constant import ( 
     TriggerContent, TradingType, Operator, TPSLOrder, TPSLWrapper, SplitDescription,
     StopSign, TimeSliceOrderType, ConditionMarketType, ConditionPriceType, ConditionOrderType, TrailOrder, Direction, ConditionStatus, HistoryStatus
 )
-from datetime import datetime, timedelta
 
+#%%
 condition = Condition(
     market_type = TradingType.Reference,        
     symbol = "2881",
@@ -40,9 +35,9 @@ condition = Condition(
     comparison = Operator.LessThan
 )
 
-order = ConditionOrder(
+order = ConditionOrder(     
     buy_sell= BSAction.Sell,
-    symbol = "21",
+    symbol = "2881",
     quantity = 1000,
     price = None,
     market_type = ConditionMarketType.Common,
@@ -51,37 +46,20 @@ order = ConditionOrder(
     order_type = ConditionOrderType.Stock,
 )
 
-res = sdk.stock.single_condition(active_account, "20240821","20241118", StopSign.Full , condition, order)
+res = sdk.stock.single_condition(active_account, "20240829","20241125", StopSign.Full , condition, order)
+print(res)
+
 # %%
-get_res = sdk.stock.get_condition_order(active_account)
+sdk.stock.cancel_condition_orders(active_account, res.data.guid)
 
 #%%
-sdk.stock.cancel_condition_orders(active_account, "f28ff37c-76b0-441f-8aaf-2a8bf19f904e")
-#%%
-guid_list = []
-for i in range(100):
-    condition = Condition(
-        market_type = TradingType.Reference,        
-        symbol = "2881",
-        trigger = TriggerContent.MatchedPrice,
-        trigger_value = "80",
-        comparison = Operator.LessThan
-    )
+import pandas as pd
+sdk.init_realtime()
+reststock = sdk.marketdata.rest_client.stock
+TSE_movers = reststock.snapshot.movers(market='TSE', type='COMMONSTOCK', direction='up', change='percent', gte=-10)
+TSE_movers_df = pd.DataFrame(TSE_movers['data'])
+OTC_movers = reststock.snapshot.movers(market='OTC', type='COMMONSTOCK', direction='up', change='percent', gte=-10)
+OTC_movers_df = pd.DataFrame(OTC_movers['data'])
 
-    order = ConditionOrder(
-        buy_sell= BSAction.Sell,
-        symbol = "21",
-        quantity = 1000,
-        price = None,
-        market_type = ConditionMarketType.Common,
-        price_type = ConditionPriceType.Market,
-        time_in_force = TimeInForce.ROD,
-        order_type = ConditionOrderType.Stock
-    )
-
-    res = sdk.stock.single_condition(active_account, "20240821","20241118", StopSign.Full , condition, order)
-    guid_list.append(res.data.guid)
-#%%
-
-for i in range(len(guid_list)):
-    sdk.stock.cancel_condition_orders(active_account, guid_list[i])
+all_movers_df = pd.concat([TSE_movers_df, OTC_movers_df])
+# %%
